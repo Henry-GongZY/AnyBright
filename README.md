@@ -67,8 +67,6 @@ bright unlock               解除 gamma ~50% 下限（管理员，一次性）
 dotnet publish App -c Release -p:Platform=x64 -r win-x64 --self-contained true -o publish
 ```
 
-或在仓库打 `v*` tag 推送，GitHub Actions 会自动构建 portable `.zip` 与 Inno Setup 安装包并发布到 Release（见 [.github/workflows/release.yml](.github/workflows/release.yml)）。
-
 ## 致谢
 
 界面与交互打磨由 [Codex](https://openai.com/codex/) 协作完成。
