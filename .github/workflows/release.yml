@@ -40,7 +40,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path staging/AnyBright | Out-Null
           Copy-Item publish/out/* staging/AnyBright -Recurse -Force
-          Copy-Item cli/brightness.ps1 cli/bright.cmd staging/AnyBright -Force
+          Copy-Item cli/brightness.ps1, cli/bright.cmd -Destination staging/AnyBright -Force
           Compress-Archive -Path staging/AnyBright -DestinationPath "AnyBright-${{ steps.ver.outputs.version }}-win-x64-portable.zip" -Force
 
       - name: Build installer (Inno Setup)
