@@ -1,0 +1,78 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Determine version
+        id: ver
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.1.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish (self-contained win-x64)
+        run: dotnet publish App -c Release -p:Platform=x64 -r win-x64 --self-contained true -p:Version=${{ steps.ver.outputs.version }} -o publish/out
+
+      - name: Stage portable package (app + CLI scripts)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path staging/AnyBright | Out-Null
+          Copy-Item publish/out/* staging/AnyBright -Recurse -Force
+          Copy-Item cli/brightness.ps1 cli/bright.cmd staging/AnyBright -Force
+          Compress-Archive -Path staging/AnyBright -DestinationPath "AnyBright-${{ steps.ver.outputs.version }}-win-x64-portable.zip" -Force
+
+      - name: Build installer (Inno Setup)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ steps.ver.outputs.version }} installer/AnyBright.iss
+
+      - name: Upload portable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnyBright-${{ steps.ver.outputs.version }}-win-x64-portable
+          path: AnyBright-*-portable.zip
+          if-no-files-found: error
+
+      - name: Upload installer
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnyBright-${{ steps.ver.outputs.version }}-win-x64-setup
+          path: installer/Output/*.exe
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            AnyBright-*-portable.zip
+            installer/Output/*.exe
+          generate_release_notes: true

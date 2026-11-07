@@ -1,0 +1,21 @@
+# .NET build outputs
+[Bb]in/
+[Oo]bj/
+publish/
+out/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+
+# runtime state
+.state/
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# local dev backups
+.ui-backup/
