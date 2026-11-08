@@ -19,3 +19,5 @@ Desktop.ini
 
 # local dev backups
 .ui-backup/
+publish-trim/
+staging/
