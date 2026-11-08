@@ -162,7 +162,46 @@ public static partial class BrightnessService
 
     // ---------- gamma ramp (software signal dimming) ----------
 
-    public static int? ReadGammaPercent(string deviceName)
+    // Windows rejects gamma ramps below ~50% unless GdiIcmGammaRange=0 is set.
+    // The GUI slider maps its 0..100 range onto whichever window is available:
+    // locked -> factor [0.52, 1.0]; unlocked -> factor [0.05, 1.0].
+    private const double LockedGammaFloor = 0.52;
+    private const double UnlockedGammaFloor = 0.05;
+
+    // GDI reads the registry override once per process, so cache it at startup:
+    // flipping the registry mid-run must not extend the range before win32k allows it.
+    public static bool IsGammaUnlocked { get; } = DetectGammaUnlocked();
+
+    private static bool DetectGammaUnlocked()
+    {
+        try
+        {
+            var v = Microsoft.Win32.Registry.GetValue(
+                @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ICM",
+                "GdiIcmGammaRange", null);
+            return v is int i && i == 0;
+        }
+        catch { return false; }
+    }
+
+    public static double GammaSliderToFactor(int sliderPercent)
+    {
+        var t = Math.Clamp(sliderPercent, 0, 100) / 100.0;
+        return IsGammaUnlocked
+            ? UnlockedGammaFloor + (1.0 - UnlockedGammaFloor) * t
+            : LockedGammaFloor + (1.0 - LockedGammaFloor) * t;
+    }
+
+    public static int GammaFactorToSlider(double factor)
+    {
+        factor = Math.Clamp(factor, 0.0, 1.0);
+        var t = IsGammaUnlocked
+            ? (factor - UnlockedGammaFloor) / (1.0 - UnlockedGammaFloor)
+            : (factor - LockedGammaFloor) / (1.0 - LockedGammaFloor);
+        return (int)Math.Round(Math.Clamp(t, 0.0, 1.0) * 100);
+    }
+
+    public static double? ReadGammaFactor(string deviceName)
     {
         IntPtr hdc = Native.CreateDC(null, deviceName, null, IntPtr.Zero);
         if (hdc == IntPtr.Zero) return null;
@@ -170,15 +209,14 @@ public static partial class BrightnessService
         {
             var ramp = EmptyRamp();
             if (!Native.GetDeviceGammaRamp(hdc, ref ramp)) return null;
-            return (int)Math.Round(ramp.Red[255] / 652.8);   // identity max = 255*256
+            return ramp.Red[255] / 65280.0;   // identity max = 255*256
         }
         finally { Native.DeleteDC(hdc); }
     }
 
-    public static bool SetGammaPercent(string deviceName, int percent)
+    public static bool SetGammaFactor(string deviceName, double factor)
     {
-        if (percent < 1) percent = 1;
-        if (percent > 100) percent = 100;
+        factor = Math.Clamp(factor, 0.01, 1.0);
 
         IntPtr hdc = Native.CreateDC(null, deviceName, null, IntPtr.Zero);
         if (hdc == IntPtr.Zero) return false;
@@ -207,7 +245,6 @@ public static partial class BrightnessService
             }
 
             var target = EmptyRamp();
-            double factor = percent / 100.0;
             for (int c = 0; c < 3; c++)
             {
                 var dst = c == 0 ? target.Red : c == 1 ? target.Green : target.Blue;
@@ -220,7 +257,7 @@ public static partial class BrightnessService
                 }
             }
             bool ok = Native.SetDeviceGammaRamp(hdc, ref target);
-            if (ok) SaveGammaState(deviceName, baseline, percent);
+            if (ok) SaveGammaState(deviceName, baseline, factor);
             return ok;
         }
         finally { Native.DeleteDC(hdc); }
@@ -262,11 +299,16 @@ public static partial class BrightnessService
 
     private sealed class GammaStateDto
     {
+        public int version { get; set; } = 2;          // v1 stored appliedPct (percent), v2 stores factor
         public int[] r { get; set; } = Array.Empty<int>();
         public int[] g { get; set; } = Array.Empty<int>();
         public int[] b { get; set; } = Array.Empty<int>();
-        public int appliedPct { get; set; } = 100;
+        public double factor { get; set; } = 1.0;
+        public int appliedPct { get; set; } = 100;     // v1 legacy field, kept for migration
     }
+
+    private static double StateToFactor(GammaStateDto dto)
+        => dto.version >= 2 ? dto.factor : dto.appliedPct / 100.0;
 
     private sealed class DdcStateDto
     {
@@ -285,7 +327,7 @@ public static partial class BrightnessService
         return null;
     }
 
-    private static void SaveGammaState(string deviceName, ushort[][] baseline, int appliedPct)
+    private static void SaveGammaState(string deviceName, ushort[][] baseline, double factor)
     {
         try
         {
@@ -294,7 +336,8 @@ public static partial class BrightnessService
                 r = Array.ConvertAll(baseline[0], x => (int)x),
                 g = Array.ConvertAll(baseline[1], x => (int)x),
                 b = Array.ConvertAll(baseline[2], x => (int)x),
-                appliedPct = appliedPct,
+                factor = factor,
+                appliedPct = (int)Math.Round(factor * 100),
             };
             var path = StatePath("gamma", deviceName);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -340,12 +383,12 @@ public static partial class BrightnessService
         return null;
     }
 
-    /// <summary>Slider position at startup: last applied percent, or the live ramp.</summary>
-    public static int GetStartupGammaPercent(string deviceName)
+    /// <summary>Slider position for the gamma card at startup (v1 states are migrated).</summary>
+    public static int GetStartupGammaSlider(string deviceName)
     {
         var persisted = LoadGammaState(deviceName);
-        if (persisted != null) return persisted.appliedPct;
-        return ReadGammaPercent(deviceName) ?? 100;
+        if (persisted != null) return GammaFactorToSlider(StateToFactor(persisted));
+        return ReadGammaFactor(deviceName) is { } f ? GammaFactorToSlider(f) : 100;
     }
 
     private static Native.Ramp EmptyRamp() => new()

@@ -103,7 +103,7 @@ public sealed partial class MainWindow : Window
         try
         {
             var displays = await Task.Run(() => BrightnessService.EnumerateDisplays()
-                .Select(m => (Monitor: m, Gamma: BrightnessService.GetStartupGammaPercent(m.DeviceName))).ToList());
+                .Select(m => (Monitor: m, Gamma: BrightnessService.GetStartupGammaSlider(m.DeviceName))).ToList());
             if (_closed) return;
             foreach (var (monitor, gamma) in displays)
             {

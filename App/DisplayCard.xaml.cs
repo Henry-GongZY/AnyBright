@@ -67,6 +67,12 @@ public sealed partial class DisplayCard : UserControl
         {
             ValueText.Text = $"{(int)Math.Round(BrightnessSlider.Value)}";
             if (_syncing || _unloaded) return;
+            if (!IsDdc && BrightnessSlider.Value <= 0 && !BrightnessService.IsGammaUnlocked)
+            {
+                // slider bottomed out while the system floor is still in place:
+                // point at the unlock instead of silently doing nothing
+                GammaLimitReached?.Invoke(this, EventArgs.Empty);
+            }
             ShowStatus("正在调整…", "\uE895");
             _timer.Stop();
             _timer.Start();
@@ -87,7 +93,7 @@ public sealed partial class DisplayCard : UserControl
     {
         ModeDescriptionText.Text = IsDdc ? "调节显示器背光" : "调节输出画面亮度";
         _syncing = true;
-        try { BrightnessSlider.Minimum = IsDdc ? 0 : 1; }
+        try { BrightnessSlider.Minimum = 0; }   // 0 is safe in both modes (gamma maps to the allowed range)
         finally { _syncing = false; }
     }
 
@@ -97,7 +103,7 @@ public sealed partial class DisplayCard : UserControl
         _syncing = true;
         try
         {
-            BrightnessSlider.Value = Math.Clamp(percent, IsDdc ? 0 : 1, 100);
+            BrightnessSlider.Value = Math.Clamp(percent, 0, 100);
             ValueText.Text = $"{(int)Math.Round(BrightnessSlider.Value)}";
         }
         finally { _syncing = false; }
@@ -134,16 +140,11 @@ public sealed partial class DisplayCard : UserControl
                 {
                     var ok = await Task.Run(() => ddc
                         ? BrightnessService.SetDdc(_monitor.HMonitor, pct, _monitor.DdcMax)
-                        : BrightnessService.SetGammaPercent(_monitor.DeviceName, pct));
+                        : BrightnessService.SetGammaFactor(_monitor.DeviceName, BrightnessService.GammaSliderToFactor(pct)));
                     if (_unloaded) return;
                     // Do not replace the pending drag's feedback with an older result.
                     if (_pendingKind.Length > 0 || _timer.IsRunning) continue;
                     if (ok) ShowStatus($"已应用 {pct}% · {(ddc ? "硬件背光" : "软件调光")}");
-                    else if (!ddc && pct < 50)
-                    {
-                        ShowStatus("已达到系统调光下限，可在下方解除限制", "\uE7BA");
-                        GammaLimitReached?.Invoke(this, EventArgs.Empty);
-                    }
                     else ShowStatus("未能应用亮度，请稍后重试", "\uE7BA");
                 }
                 else
@@ -155,9 +156,9 @@ public sealed partial class DisplayCard : UserControl
                         var ok = ddc
                             ? BrightnessService.ResetDdc(_monitor.DeviceName, _monitor.HMonitor, _monitor.DdcMax)
                             : BrightnessService.ResetGamma(_monitor.DeviceName);
-                        int? value = ddc
-                            ? BrightnessService.ReadDdc(_monitor.HMonitor) is { } read ? BrightnessService.ToPercent(read.current, read.max) : null
-                            : BrightnessService.ReadGammaPercent(_monitor.DeviceName);
+                            int? value = ddc
+                                ? BrightnessService.ReadDdc(_monitor.HMonitor) is { } read ? BrightnessService.ToPercent(read.current, read.max) : null
+                                : BrightnessService.ReadGammaFactor(_monitor.DeviceName) is { } f ? BrightnessService.GammaFactorToSlider(f) : null;
                         return (ok, value);
                     });
                     if (_unloaded) return;
@@ -192,7 +193,7 @@ public sealed partial class DisplayCard : UserControl
         {
             int? value = await Task.Run(() => ddc
                 ? BrightnessService.ReadDdc(_monitor.HMonitor) is { } read ? BrightnessService.ToPercent(read.current, read.max) : (int?)null
-                : BrightnessService.GetStartupGammaPercent(_monitor.DeviceName));
+                : BrightnessService.GetStartupGammaSlider(_monitor.DeviceName));
             if (_unloaded) return;
             if (value is { } percent) SetDisplayedValue(percent);
             ShowStatus(value != null ? "已切换调光方式" : "无法读取硬件亮度，请尝试软件调光", value != null ? "\uE73E" : "\uE7BA");
