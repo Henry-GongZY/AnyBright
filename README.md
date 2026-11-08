@@ -2,6 +2,10 @@
 
 **Windows 显示器亮度调节工具 —— 每块屏幕一个滑块，任何显示器都有效。**
 
+**A Windows display brightness tool — one slider per screen, works on every monitor.**
+
+简体中文 | [English](#english)
+
 <p align="center">
   <img src="docs/screenshot.png" width="480" alt="AnyBright 主界面">
 </p>
@@ -10,7 +14,7 @@
 [![Latest Release](https://img.shields.io/github/v/release/Henry-GongZY/AnyBright)](https://github.com/Henry-GongZY/AnyBright/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[下载最新版](https://github.com/Henry-GongZY/AnyBright/releases/latest) · portable `.zip` 或安装包 `.exe`
+[下载最新版 Download](https://github.com/Henry-GongZY/AnyBright/releases/latest) · portable `.zip` 或安装包 `.exe`
 
 ## 为什么需要它
 
@@ -73,6 +77,79 @@ dotnet publish App -c Release -p:Platform=x64 -r win-x64 --self-contained true -
 
 界面与交互打磨由 [Codex](https://openai.com/codex/) 协作完成。
 
-## License
+## 许可证
+
+[MIT](LICENSE)
+
+---
+
+## English
+
+**A Windows display brightness tool — one slider per screen, works on every monitor.**
+
+简体中文 | **English**
+
+### Why
+
+Windows' brightness slider only serves laptop internal panels. External monitors get no brightness control from the OS — even when they support DDC/CI — until Windows 11 24H2. AnyBright fills that gap:
+
+- **Hardware backlight (DDC/CI)** — sends VCP `0x10` commands so the monitor adjusts its own backlight, equivalent to the joystick button on the monitor, with no loss of contrast or color accuracy
+- **Software signal (Gamma)** — scales the GPU output LUT to dim the picture. No monitor cooperation required: works on internal panels, external monitors, and old displays without DDC
+- Both modes are auto-detected, switchable anytime; your choice is remembered
+
+### Features
+
+- WinUI 3 + Mica, follows system light/dark theme (「Appearance」in the top-right can force light/dark); native title bar, per-monitor cards, high-DPI and narrow-window adaptive layout
+- One card per display; sliders apply instantly (220 ms debounce + request coalescing + serialized DDC bus — no dropped commands or collisions while dragging)
+- Gamma dimming baseline persisted (`%LOCALAPPDATA%\ScreenBrightness\`): no compounding across restarts; compatible with f.lux / Night light
+- The gamma slider's 0-100 maps onto the system-allowed 50%-100% brightness range (0 = the old 50%); for deeper dimming use the CLI `set` + `unlock`
+- Display detection has a loading state with one-click re-scan on failure
+- Ships with a PowerShell CLI for scripting and remote scenarios
+
+### Install
+
+Grab the latest from [Releases](https://github.com/Henry-GongZY/AnyBright/releases/latest):
+
+| File | Description |
+|------|-------------|
+| `AnyBright-x.y.z-win-x64-portable.zip` | Portable (x64) — unzip and run `AnyBright.exe` (CLI scripts included) |
+| `AnyBright-x.y.z-setup-x64.exe` | Installer (x64) with Start-menu/desktop shortcuts and an uninstaller |
+| `AnyBright-x.y.z-win-arm64-portable.zip` | Portable (ARM64), CLI scripts included |
+| `AnyBright-x.y.z-setup-arm64.exe` | Installer (ARM64) |
+
+Requirements: Windows 10 19041+ / Windows 11 (x64 or ARM64).
+
+### CLI Usage
+
+The portable zip ships with `brightness.ps1` / `bright.cmd`:
+
+```text
+bright list                 list displays + current brightness + DDC probe
+bright get [-Mode ddc]      read current brightness
+bright set 70 [-Mode ddc]   set brightness (0-100)
+bright set 50 -Display 2    adjust only display #2
+bright reset [-Mode ddc]    restore the recorded initial value
+bright unlock               lift the ~50% gamma floor (admin, one-time)
+```
+
+`-Mode` defaults to `gamma` (software signal); `-Mode ddc` is hardware backlight.
+
+### Known Limitations
+
+- **Gamma mode is ineffective while HDR is on** (the compositor takes over the output path) — use DDC mode instead
+- Some drivers (Surround / Eyefinity grouped displays) apply gamma to every screen in the group
+- The CLI's `set N` keeps raw percent semantics (N = N% brightness), independent of the GUI slider's 50-100 mapping; below ~50% is rejected by the system unless unlocked
+
+### Build
+
+```bash
+dotnet publish App -c Release -p:Platform=x64 -r win-x64 --self-contained true -p:PublishTrimmed=true -o publish
+```
+
+### Acknowledgements
+
+UI/UX polish in collaboration with [Codex](https://openai.com/codex/).
+
+### License
 
 [MIT](LICENSE)
