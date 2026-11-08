@@ -36,7 +36,11 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
+#ifdef IsArm64
+Source: "..\publish\out-arm64\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+#else
 Source: "..\publish\out\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+#endif
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
