@@ -39,7 +39,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 #ifdef IsArm64
 Source: "..\publish\out-arm64\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 #else
-Source: "..\publish\out\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\publish\out-x64\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 #endif
 
 [Icons]
