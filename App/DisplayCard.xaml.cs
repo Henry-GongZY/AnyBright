@@ -67,12 +67,6 @@ public sealed partial class DisplayCard : UserControl
         {
             ValueText.Text = $"{(int)Math.Round(BrightnessSlider.Value)}";
             if (_syncing || _unloaded) return;
-            if (!IsDdc && BrightnessSlider.Value <= 0 && !BrightnessService.IsGammaUnlocked)
-            {
-                // slider bottomed out while the system floor is still in place:
-                // point at the unlock instead of silently doing nothing
-                GammaLimitReached?.Invoke(this, EventArgs.Empty);
-            }
             ShowStatus("正在调整…", "\uE895");
             _timer.Stop();
             _timer.Start();

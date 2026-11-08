@@ -162,43 +162,20 @@ public static partial class BrightnessService
 
     // ---------- gamma ramp (software signal dimming) ----------
 
-    // Windows rejects gamma ramps below ~50% unless GdiIcmGammaRange=0 is set.
-    // The GUI slider maps its 0..100 range onto whichever window is available:
-    // locked -> factor [0.52, 1.0]; unlocked -> factor [0.05, 1.0].
-    private const double LockedGammaFloor = 0.52;
-    private const double UnlockedGammaFloor = 0.05;
-
-    // GDI reads the registry override once per process, so cache it at startup:
-    // flipping the registry mid-run must not extend the range before win32k allows it.
-    public static bool IsGammaUnlocked { get; } = DetectGammaUnlocked();
-
-    private static bool DetectGammaUnlocked()
-    {
-        try
-        {
-            var v = Microsoft.Win32.Registry.GetValue(
-                @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ICM",
-                "GdiIcmGammaRange", null);
-            return v is int i && i == 0;
-        }
-        catch { return false; }
-    }
+    // Windows rejects gamma ramps below 50% brightness; the GUI slider maps its
+    // 0..100 range onto the allowed 0.50..1.0 window (verified: 0.50 passes, 0.45 fails).
+    private const double GammaFloor = 0.50;
 
     public static double GammaSliderToFactor(int sliderPercent)
     {
         var t = Math.Clamp(sliderPercent, 0, 100) / 100.0;
-        return IsGammaUnlocked
-            ? UnlockedGammaFloor + (1.0 - UnlockedGammaFloor) * t
-            : LockedGammaFloor + (1.0 - LockedGammaFloor) * t;
+        return GammaFloor + (1.0 - GammaFloor) * t;
     }
 
     public static int GammaFactorToSlider(double factor)
     {
         factor = Math.Clamp(factor, 0.0, 1.0);
-        var t = IsGammaUnlocked
-            ? (factor - UnlockedGammaFloor) / (1.0 - UnlockedGammaFloor)
-            : (factor - LockedGammaFloor) / (1.0 - LockedGammaFloor);
-        return (int)Math.Round(Math.Clamp(t, 0.0, 1.0) * 100);
+        return Math.Clamp((int)Math.Round((factor - GammaFloor) / (1.0 - GammaFloor) * 100), 0, 100);
     }
 
     public static double? ReadGammaFactor(string deviceName)
