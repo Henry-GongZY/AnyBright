@@ -8,6 +8,7 @@
     <RootNamespace>ScreenBrightnessApp</RootNamespace>
     <AssemblyName>AnyBright</AssemblyName>
     <Product>AnyBright</Product>
+    <ApplicationIcon>assets\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x86;x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
@@ -22,6 +23,10 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250205002" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="assets\app.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -19,6 +19,8 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBar);
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Standard;
+        try { AppWindow.SetIcon(System.IO.Path.Combine(AppContext.BaseDirectory, "assets", "app.ico")); }
+        catch { /* icon asset missing: keep the default window icon */ }
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var scale = Native.GetDpiForWindow(hwnd) / 96.0;
         _windowProc = HandleWindowMessage; // Keep the native callback alive for the window's lifetime.
