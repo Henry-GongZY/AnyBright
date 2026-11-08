@@ -18,10 +18,15 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 OutputDir=Output
+#ifdef IsArm64
+OutputBaseFilename=AnyBright-{#MyAppVersion}-setup-arm64
+ArchitecturesInstallIn64BitMode=x64compatible arm64
+#else
 OutputBaseFilename=AnyBright-{#MyAppVersion}-setup-x64
+ArchitecturesInstallIn64BitMode=x64compatible
+#endif
 Compression=lzma2/max
 SolidCompression=yes
-ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]

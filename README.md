@@ -35,10 +35,12 @@ Windows 的亮度滑块只为笔记本内屏服务；外接显示器即使支持
 
 | 文件 | 说明 |
 |------|------|
-| `AnyBright-x.y.z-win-x64-portable.zip` | 便携版，解压即用（含 CLI 脚本），运行 `AnyBright.exe` |
-| `AnyBright-x.y.z-setup-x64.exe` | Inno Setup 安装包，带开始菜单/桌面快捷方式与卸载器 |
+| `AnyBright-x.y.z-win-x64-portable.zip` | 便携版（x64），解压即用（含 CLI 脚本），运行 `AnyBright.exe` |
+| `AnyBright-x.y.z-setup-x64.exe` | 安装包（x64），带开始菜单/桌面快捷方式与卸载器 |
+| `AnyBright-x.y.z-win-arm64-portable.zip` | 便携版（ARM64），解压即用（含 CLI 脚本） |
+| `AnyBright-x.y.z-setup-arm64.exe` | 安装包（ARM64） |
 
-系统要求：Windows 10 19041+ / Windows 11（x64）。
+系统要求：Windows 10 19041+ / Windows 11（x64 或 ARM64）。
 
 ## CLI 用法
 
