@@ -1,6 +1,11 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ScreenBrightnessApp;
+
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(Dictionary<string, string>))]
+internal sealed partial class SettingsJsonContext : JsonSerializerContext;
 
 internal static class AppSettings
 {
@@ -13,7 +18,7 @@ internal static class AppSettings
         try
         {
             if (File.Exists(SettingsFile))
-                return JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(SettingsFile)) ?? new();
+                return JsonSerializer.Deserialize(File.ReadAllText(SettingsFile), SettingsJsonContext.Default.DictionaryStringString) ?? new();
         }
         catch { /* corrupted file -> defaults */ }
         return new();
@@ -24,7 +29,7 @@ internal static class AppSettings
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsFile)!);
-            File.WriteAllText(SettingsFile, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(SettingsFile, JsonSerializer.Serialize(settings, SettingsJsonContext.Default.DictionaryStringString));
         }
         catch { /* best effort */ }
     }

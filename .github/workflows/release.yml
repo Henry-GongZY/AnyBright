@@ -32,8 +32,8 @@ jobs:
             echo "version=0.1.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Publish (self-contained win-x64)
-        run: dotnet publish App -c Release -p:Platform=x64 -r win-x64 --self-contained true -p:Version=${{ steps.ver.outputs.version }} -o publish/out
+      - name: Publish (self-contained, IL-trimmed, win-x64)
+        run: dotnet publish App -c Release -p:Platform=x64 -r win-x64 --self-contained true -p:PublishTrimmed=true -p:Version=${{ steps.ver.outputs.version }} -o publish/out
 
       - name: Stage portable package (app + CLI scripts)
         shell: pwsh

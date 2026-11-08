@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ScreenBrightnessApp;
 
@@ -22,9 +23,14 @@ public sealed class DisplayMonitor
 ///  - Gamma ramp: scales the video card's lookup table, dimming the *signal*
 ///    sent to the display. Works on any monitor without cooperation.
 /// </summary>
-public static class BrightnessService
+public static partial class BrightnessService
 {
     private const byte VcpBrightness = 0x10;
+
+    // source-generated serializers: trim-safe by construction (no reflection)
+    [JsonSerializable(typeof(GammaStateDto))]
+    [JsonSerializable(typeof(DdcStateDto))]
+    private sealed partial class ServiceJsonContext : JsonSerializerContext;
 
     // per-device baselines captured before the first gamma change,
     // so repeated sets never compound and external ramps (f.lux, Night light) survive
@@ -273,7 +279,7 @@ public static class BrightnessService
         {
             var path = StatePath("gamma", deviceName);
             if (File.Exists(path))
-                return JsonSerializer.Deserialize<GammaStateDto>(File.ReadAllText(path));
+                return JsonSerializer.Deserialize(File.ReadAllText(path), ServiceJsonContext.Default.GammaStateDto);
         }
         catch { /* corrupted -> recapture */ }
         return null;
@@ -292,7 +298,7 @@ public static class BrightnessService
             };
             var path = StatePath("gamma", deviceName);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(dto));
+            File.WriteAllText(path, JsonSerializer.Serialize(dto, ServiceJsonContext.Default.GammaStateDto));
         }
         catch { /* best effort */ }
     }
@@ -314,7 +320,7 @@ public static class BrightnessService
         {
             var path = StatePath("ddc", deviceName);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(new DdcStateDto { originalPct = percent }));
+            File.WriteAllText(path, JsonSerializer.Serialize(new DdcStateDto { originalPct = percent }, ServiceJsonContext.Default.DdcStateDto));
         }
         catch { /* best effort */ }
     }
@@ -326,7 +332,7 @@ public static class BrightnessService
             var path = StatePath("ddc", deviceName);
             if (File.Exists(path))
             {
-                var dto = JsonSerializer.Deserialize<DdcStateDto>(File.ReadAllText(path));
+                var dto = JsonSerializer.Deserialize(File.ReadAllText(path), ServiceJsonContext.Default.DdcStateDto);
                 if (dto != null) return dto.originalPct;
             }
         }
