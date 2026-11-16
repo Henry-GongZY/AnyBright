@@ -10,7 +10,10 @@ public sealed partial class MainWindow : Window
 {
     private readonly Dictionary<string, string> _modePrefs;
     private bool _closed;
+    private bool _exiting;
     private readonly Native.SubclassProc _windowProc;
+
+    public static MainWindow? Current { get; private set; }
 
     public MainWindow()
     {
@@ -21,6 +24,8 @@ public sealed partial class MainWindow : Window
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Standard;
         AppIconService.Apply(this);
         AppIconService.Watch(this);
+        TrayIconService.Initialize(this, ShowFromTray, ExitApp);
+        Current = this;
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var scale = Native.GetDpiForWindow(hwnd) / 96.0;
         _windowProc = HandleWindowMessage; // Keep the native callback alive for the window's lifetime.
@@ -42,12 +47,20 @@ public sealed partial class MainWindow : Window
             _closed = true;
             Native.RemoveWindowSubclass(hwnd, _windowProc, (UIntPtr)1);
         };
+        AppWindow.Closing += (_, args) =>
+        {
+            if (_exiting) return;
+            args.Cancel = true;   // park in the tray instead of exiting
+            DispatcherQueue.TryEnqueue(HideToTray);
+        };
         UpdateCaptionColors();
         _ = InitAsync();
     }
 
     private static IntPtr HandleWindowMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr data)
     {
+        if (TrayIconService.ProcessWindowMessage(hwnd, message, wParam, lParam)) return IntPtr.Zero;
+
         const uint WmGetMinMaxInfo = 0x0024;
         if (message == WmGetMinMaxInfo)
         {
@@ -147,5 +160,29 @@ public sealed partial class MainWindow : Window
             System.Diagnostics.Process.Start(psi);
         }
         catch { /* The user may cancel the elevation prompt. */ }
+    }
+
+    private void HideToTray()
+    {
+        AppWindow.Hide();
+        TrayIconService.ShowBalloonOnce();
+    }
+
+    public void ShowFromTray()
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        if (Native.IsIconic(hwnd)) Native.ShowWindow(hwnd, 9);   // SW_RESTORE
+        AppWindow.Show();
+        Activate();
+        Native.SetForegroundWindow(hwnd);
+    }
+
+    public void BringToForeground() => ShowFromTray();
+
+    private void ExitApp()
+    {
+        _exiting = true;
+        TrayIconService.Remove();
+        Close();
     }
 }

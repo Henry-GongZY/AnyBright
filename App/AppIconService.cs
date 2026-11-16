@@ -21,12 +21,13 @@ internal static class AppIconService
         _ = System.Threading.Tasks.Task.Run(() =>
         {
             string? path = null;
-            try { path = GenerateAccentIcon(); }
+            try { path = EnsureAccentIcon(); }
             catch { return; /* accent lookup can fail in odd shell states; keep last icon */ }
             window.DispatcherQueue.TryEnqueue(() =>
             {
                 try { window.AppWindow.SetIcon(path); }
                 catch { /* window may be closing */ }
+                TrayIconService.UpdateIcon(path);
             });
         });
     }
@@ -43,7 +44,8 @@ internal static class AppIconService
         catch { /* accent watching is best-effort */ }
     }
 
-    private static string GenerateAccentIcon()
+    /// <summary>Draws (or re-draws) the accent-tinted icon file and returns its path.</summary>
+    internal static string EnsureAccentIcon()
     {
         var settings = _uiSettings ?? new UISettings();
         var accent = ToDrawing(settings.GetColorValue(UIColorType.Accent));
