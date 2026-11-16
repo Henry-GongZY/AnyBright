@@ -32,6 +32,7 @@ Windows 的亮度滑块只为笔记本内屏服务；外接显示器即使支持
 - Gamma 滑块 0-100 直接映射到系统允许的 50%-100% 亮度范围（0 = 原先的 50%，拖到哪都不会被系统拒绝）；需要更深的压暗时用 CLI 的 `set` + `unlock`
 - 显示器检测有加载态，失败或未连接时可一键重新检测
 - 关闭窗口即驻留系统托盘：左键图标开关主窗口，右键菜单可退出；托盘图标用系统强调色动态绘制，Explorer 重启后自动重挂；单实例保护（重复启动自动唤起已有窗口）
+- 右上角齿轮「设置」菜单：外观主题（跟随系统/浅色/深色）+ 开机自启动开关（默认关闭；开启后开机静默驻留托盘，不弹窗口）
 - 附带 PowerShell CLI，方便脚本与远程场景
 
 ## 安装
@@ -106,6 +107,7 @@ Windows' brightness slider only serves laptop internal panels. External monitors
 - The gamma slider's 0-100 maps onto the system-allowed 50%-100% brightness range (0 = the old 50%); for deeper dimming use the CLI `set` + `unlock`
 - Display detection has a loading state with one-click re-scan on failure
 - Closing the window parks the app in the system tray: left-click the icon to toggle the window, right-click to quit; the tray icon is drawn at runtime from the system accent color and re-registered after Explorer restarts; single-instance (relaunching activates the existing window)
+- Gear「Settings」menu top-right: appearance theme (system/light/dark) + a launch-at-Windows-startup toggle (default off; enabled, it starts silently in the tray without showing the window)
 - Ships with a PowerShell CLI for scripting and remote scenarios
 
 ### Install
