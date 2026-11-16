@@ -19,13 +19,17 @@
                     <TextBlock x:Name="IntroSubtitle" Text="独立调节每一块屏幕，为此刻找到舒适的亮度。" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Top">
-                <Button Width="36" Height="36" Style="{StaticResource QuietButtonStyle}" AutomationProperties.Name="外观" ToolTipService.ToolTip="外观">
-                    <FontIcon Glyph="&#xE790;" FontSize="18"/>
+                <Button Width="36" Height="36" Style="{StaticResource QuietButtonStyle}" AutomationProperties.Name="设置" ToolTipService.ToolTip="设置">
+                    <FontIcon Glyph="&#xE713;" FontSize="18"/>
                     <Button.Flyout>
                         <MenuFlyout>
+                            <MenuFlyoutItem Text="外观主题" IsEnabled="False"/>
                             <RadioMenuFlyoutItem x:Name="SystemThemeItem" Text="跟随系统" Tag="system" GroupName="Theme" Click="OnThemeClick" IsChecked="True"/>
                             <RadioMenuFlyoutItem x:Name="LightThemeItem" Text="浅色" Tag="light" GroupName="Theme" Click="OnThemeClick"/>
                             <RadioMenuFlyoutItem x:Name="DarkThemeItem" Text="深色" Tag="dark" GroupName="Theme" Click="OnThemeClick"/>
+                            <MenuFlyoutSeparator/>
+                            <MenuFlyoutItem Text="开机自启动" IsEnabled="False"/>
+                            <ToggleMenuFlyoutItem x:Name="AutoStartItem" Text="开机后静默驻留托盘" Click="OnAutoStartClick"/>
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>

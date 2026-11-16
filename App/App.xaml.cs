@@ -27,8 +27,13 @@ public partial class App : Application
 
         try { Native.SetCurrentProcessExplicitAppUserModelID("AnyBright.App"); } catch { }
 
+        var startMinimized = Environment.GetCommandLineArgs().Any(
+            a => a is "--minimized" or "/minimized");
+        MainWindow.LaunchHidden = startMinimized;
+
         _window = new MainWindow();
-        _window.Activate();
+        if (startMinimized) _window.AppWindow.Hide();   // silent start: tray only, no UI
+        else _window.Activate();
 
         var activate = new EventWaitHandle(false, EventResetMode.AutoReset, ActivateEventName);
         ThreadPool.RegisterWaitForSingleObject(activate,

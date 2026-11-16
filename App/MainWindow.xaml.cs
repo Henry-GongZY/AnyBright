@@ -15,6 +15,9 @@ public sealed partial class MainWindow : Window
 
     public static MainWindow? Current { get; private set; }
 
+    /// <summary>True when launched with --minimized (auto-start): stay in the tray, no UI.</summary>
+    public static bool LaunchHidden { get; set; }
+
     public MainWindow()
     {
         InitializeComponent();
@@ -26,6 +29,23 @@ public sealed partial class MainWindow : Window
         AppIconService.Watch(this);
         TrayIconService.Initialize(this, ShowFromTray, ExitApp);
         Current = this;
+
+        try
+        {
+            AutoStartItem.IsChecked = Microsoft.Win32.Registry.CurrentUser
+                .OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run")?.GetValue("AnyBright") != null;
+        }
+        catch { }
+        if (LaunchHidden)
+        {
+            // silent start: give the tray a moment to register, then hint + make sure we stay hidden
+            _ = System.Threading.Tasks.Task.Delay(1000).ContinueWith(_ =>
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    AppWindow.Hide();
+                    TrayIconService.ShowBalloonOnce();
+                }));
+        }
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var scale = Native.GetDpiForWindow(hwnd) / 96.0;
         _windowProc = HandleWindowMessage; // Keep the native callback alive for the window's lifetime.
@@ -94,6 +114,19 @@ public sealed partial class MainWindow : Window
         ApplyTheme(theme);
         _modePrefs["$theme"] = theme;
         AppSettings.Save(_modePrefs);
+    }
+
+    private void OnAutoStartClick(object sender, RoutedEventArgs e)
+    {
+        var on = AutoStartItem.IsChecked;
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Run");
+            if (on) key.SetValue("AnyBright", $"\"{Environment.ProcessPath}\" --minimized");
+            else key.DeleteValue("AnyBright", false);
+        }
+        catch { AutoStartItem.IsChecked = !on; }   // revert the toggle if the registry write failed
     }
 
     private void UpdateCaptionColors()
