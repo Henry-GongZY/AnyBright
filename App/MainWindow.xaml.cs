@@ -2,6 +2,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using System.Runtime.InteropServices;
 
 namespace ScreenBrightnessApp;
@@ -138,6 +139,23 @@ public sealed partial class MainWindow : Window
             ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
         AppWindow.TitleBar.ButtonInactiveForegroundColor = RootGrid.ActualTheme == ElementTheme.Dark
             ? Microsoft.UI.Colors.Gray : Microsoft.UI.Colors.DimGray;
+        ApplyHeaderGlyphs();
+    }
+
+    /// <summary>
+    /// The two header buttons use pre-rendered glyph bitmaps instead of FontIcon -
+    /// font glyphs can end up half-rasterized when the window crosses monitors with
+    /// different scale factors, while bitmaps are DPI-transition immune.
+    /// </summary>
+    private void ApplyHeaderGlyphs()
+    {
+        var suffix = RootGrid.ActualTheme == ElementTheme.Dark ? "light" : "dark";
+        try
+        {
+            GearImg.Source = new BitmapImage(new Uri("ms-appx:///assets/settings-" + suffix + ".png"));
+            HelpImg.Source = new BitmapImage(new Uri("ms-appx:///assets/help-" + suffix + ".png"));
+        }
+        catch { }
     }
 
     private async Task InitAsync()

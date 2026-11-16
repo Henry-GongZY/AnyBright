@@ -19,8 +19,8 @@
                     <TextBlock x:Name="IntroSubtitle" Text="独立调节每一块屏幕，为此刻找到舒适的亮度。" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Top">
-                <Button Width="36" Height="36" Style="{StaticResource QuietButtonStyle}" AutomationProperties.Name="设置" ToolTipService.ToolTip="设置">
-                    <FontIcon Glyph="&#xE713;" FontSize="18"/>
+                <Button x:Name="GearButton" Width="36" Height="36" Style="{StaticResource QuietButtonStyle}" AutomationProperties.Name="设置" ToolTipService.ToolTip="设置">
+                    <Image x:Name="GearImg" Width="18" Height="18" Source="ms-appx:///assets/settings-light.png"/>
                     <Button.Flyout>
                         <MenuFlyout>
                             <MenuFlyoutItem Text="外观主题" IsEnabled="False"/>
@@ -33,8 +33,8 @@
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>
-                <Button Width="36" Height="36" Style="{StaticResource QuietButtonStyle}" AutomationProperties.Name="调光帮助" ToolTipService.ToolTip="了解调光方式">
-                    <FontIcon Glyph="&#xE897;" FontSize="18"/>
+                <Button x:Name="HelpButton" Width="36" Height="36" Style="{StaticResource QuietButtonStyle}" AutomationProperties.Name="调光帮助" ToolTipService.ToolTip="了解调光方式">
+                    <Image x:Name="HelpImg" Width="18" Height="18" Source="ms-appx:///assets/help-light.png"/>
                     <Button.Flyout>
                         <Flyout Placement="BottomEdgeAlignedRight">
                             <StackPanel MaxWidth="310" Spacing="12">
