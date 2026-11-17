@@ -335,7 +335,8 @@ public static partial class BrightnessService
 
     private static void RememberDdcOriginal(string deviceName, int percent)
     {
-        DdcOriginals[deviceName] = percent;
+        // Re-scanning a connected display must not replace this session's reset baseline.
+        if (!DdcOriginals.TryAdd(deviceName, percent)) return;
         try
         {
             var path = StatePath("ddc", deviceName);

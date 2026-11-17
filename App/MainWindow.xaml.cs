@@ -1,99 +1,173 @@
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System.Runtime.InteropServices;
+using Windows.Graphics;
 
 namespace ScreenBrightnessApp;
 
 public sealed partial class MainWindow : Window
 {
+    private const double PanelWidth = 380;
     private readonly Dictionary<string, string> _modePrefs;
+    private readonly Native.SubclassProc _windowProc;
+    private readonly IntPtr _hwnd;
     private bool _closed;
     private bool _exiting;
-    private readonly Native.SubclassProc _windowProc;
+    private bool _visible;
+    private bool _detecting;
+    private bool _resizeQueued;
+    private long _trayDismissedAt;
+    private Native.RECT _anchor;
 
-    public static MainWindow? Current { get; private set; }
-
-    /// <summary>True when launched with --minimized (auto-start): stay in the tray, no UI.</summary>
-    public static bool LaunchHidden { get; set; }
+    public static MainWindow? Instance { get; private set; }
 
     public MainWindow()
     {
         InitializeComponent();
-        SystemBackdrop = new MicaBackdrop();
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(TitleBar);
-        AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Standard;
+        Instance = this;
+        _modePrefs = AppSettings.Load();
+        _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        _windowProc = HandleWindowMessage;
+        Native.SetWindowSubclass(_hwnd, _windowProc, (UIntPtr)1, UIntPtr.Zero);
+
+        var presenter = OverlappedPresenter.Create();
+        presenter.SetBorderAndTitleBar(true, false);
+        presenter.IsResizable = false;
+        presenter.IsMaximizable = false;
+        presenter.IsMinimizable = false;
+        presenter.IsAlwaysOnTop = true;
+        AppWindow.SetPresenter(presenter);
+        AppWindow.IsShownInSwitchers = false;
+        // Windows 11 supplies the native rounded outline and shadow; older Windows ignores it.
+        var corners = 2;
+        Native.DwmSetWindowAttribute(_hwnd, 33, ref corners, sizeof(int));
+        TrayIconService.Initialize(this, ToggleFromTray, ShowFromTray, ExitApp);
         AppIconService.Apply(this);
         AppIconService.Watch(this);
-        TrayIconService.Initialize(this, ShowFromTray, ExitApp);
-        Current = this;
 
         try
         {
-            AutoStartItem.IsChecked = Microsoft.Win32.Registry.CurrentUser
-                .OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run")?.GetValue("AnyBright") != null;
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
+            AutoStartItem.IsChecked = key?.GetValue("AnyBright") != null;
         }
         catch { }
-        if (LaunchHidden)
-        {
-            // silent start: give the tray a moment to register, then hint + make sure we stay hidden
-            _ = System.Threading.Tasks.Task.Delay(1000).ContinueWith(_ =>
-                DispatcherQueue.TryEnqueue(() =>
-                {
-                    AppWindow.Hide();
-                    TrayIconService.ShowBalloonOnce();
-                }));
-        }
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var scale = Native.GetDpiForWindow(hwnd) / 96.0;
-        _windowProc = HandleWindowMessage; // Keep the native callback alive for the window's lifetime.
-        Native.SetWindowSubclass(hwnd, _windowProc, (UIntPtr)1, UIntPtr.Zero);
-        var workArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(
-            Math.Min((int)(760 * scale), workArea.Width), Math.Min((int)(640 * scale), workArea.Height)));
-        _modePrefs = AppSettings.Load();
-        ContentGrid.SizeChanged += (_, e) =>
-        {
-            var compact = e.NewSize.Width < 640;
-            ContentGrid.Padding = compact ? new Thickness(20, 16, 20, 16) : new Thickness(32, 24, 32, 20);
-            IntroSubtitle.Text = compact ? "为每一块屏幕，找到舒适的亮度。" : "独立调节每一块屏幕，为此刻找到舒适的亮度。";
-        };
         ApplyTheme(_modePrefs.GetValueOrDefault("$theme", "system"));
-        RootGrid.ActualThemeChanged += (_, _) => UpdateCaptionColors();
+        RootGrid.ActualThemeChanged += (_, _) => ApplyHeaderGlyphs();
+        Activated += (_, args) =>
+        {
+            if (args.WindowActivationState == WindowActivationState.Deactivated) QueueDismiss();
+        };
         Closed += (_, _) =>
         {
             _closed = true;
-            Native.RemoveWindowSubclass(hwnd, _windowProc, (UIntPtr)1);
+            TrayIconService.Remove();
+            Native.RemoveWindowSubclass(_hwnd, _windowProc, (UIntPtr)1);
         };
         AppWindow.Closing += (_, args) =>
         {
             if (_exiting) return;
-            args.Cancel = true;   // park in the tray instead of exiting
-            DispatcherQueue.TryEnqueue(HideToTray);
+            args.Cancel = true;
+            HideToTray();
         };
-        UpdateCaptionColors();
         _ = InitAsync();
     }
 
-    private static IntPtr HandleWindowMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr data)
+    private IntPtr HandleWindowMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr data)
     {
         if (TrayIconService.ProcessWindowMessage(hwnd, message, wParam, lParam)) return IntPtr.Zero;
-
-        const uint WmGetMinMaxInfo = 0x0024;
-        if (message == WmGetMinMaxInfo)
+        if (message == 0x0100 && wParam == (IntPtr)0x1B) // WM_KEYDOWN / VK_ESCAPE
         {
-            var result = Native.DefSubclassProc(hwnd, message, wParam, lParam);
-            var info = Marshal.PtrToStructure<Native.MINMAXINFO>(lParam);
-            var scale = Native.GetDpiForWindow(hwnd) / 96.0;
-            info.MinTrackSize.X = (int)(440 * scale);
-            info.MinTrackSize.Y = (int)(480 * scale);
-            Marshal.StructureToPtr(info, lParam, false);
-            return result;
+            HideToTray();
+            return IntPtr.Zero;
         }
+        if (message == 0x001C && wParam == IntPtr.Zero) QueueDismiss(); // WM_ACTIVATEAPP
+        if (message == 0x02E0) ScheduleResize(); // WM_DPICHANGED
         return Native.DefSubclassProc(hwnd, message, wParam, lParam);
+    }
+
+    private async void QueueDismiss()
+    {
+        // Flyouts and combo-box popups may temporarily own activation. Let them settle,
+        // then dismiss only if focus has actually moved out of this application.
+        await Task.Delay(100);
+        if (_closed || !_visible) return;
+        Native.GetWindowThreadProcessId(Native.GetForegroundWindow(), out var processId);
+        if (processId == Environment.ProcessId) return;
+        if (TrayIconService.TryGetIconRect(out var icon) && Native.GetCursorPos(out var cursor)
+            && cursor.X >= icon.Left && cursor.X < icon.Right && cursor.Y >= icon.Top && cursor.Y < icon.Bottom)
+            _trayDismissedAt = Environment.TickCount64;
+        HideToTray();
+    }
+
+    private void ToggleFromTray()
+    {
+        // Clicking the icon first deactivates the panel; do not reopen it on mouse-up.
+        if (Environment.TickCount64 - _trayDismissedAt < 400) return;
+        if (_visible) HideToTray();
+        else ShowFromTray();
+    }
+
+    private void HideToTray()
+    {
+        if (!TrayIconService.IsAvailable) return;
+        _visible = false;
+        AppWindow.Hide();
+    }
+
+    public void ShowFromTray()
+    {
+        if (_closed) return;
+        TrayIconService.TryGetIconRect(out _anchor);
+        ResizeAndPosition();
+        _visible = true;
+        AppWindow.Show();
+        Activate();
+        Native.SetForegroundWindow(_hwnd);
+        RootGrid.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+    }
+
+    private void OnContentSizeChanged(object sender, SizeChangedEventArgs e) => ScheduleResize();
+
+    private void ScheduleResize()
+    {
+        if (_closed || _resizeQueued) return;
+        _resizeQueued = true;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            _resizeQueued = false;
+            if (_visible && !_closed) ResizeAndPosition();
+        });
+    }
+
+    private void ResizeAndPosition()
+    {
+        var point = new Native.POINT { X = (_anchor.Left + _anchor.Right) / 2, Y = (_anchor.Top + _anchor.Bottom) / 2 };
+        var monitor = Native.MonitorFromPoint(point, 2); // MONITOR_DEFAULTTONEAREST
+        var info = new Native.MONITORINFO { cbSize = (uint)Marshal.SizeOf<Native.MONITORINFO>() };
+        if (!Native.GetMonitorInfoW(monitor, ref info)) return;
+        var scale = Native.GetDpiForMonitor(monitor, 0, out var dpi, out _) == 0 ? dpi / 96.0 : Native.GetDpiForWindow(_hwnd) / 96.0;
+        var work = info.rcWork;
+        var gap = (int)Math.Round(8 * scale);
+        var width = Math.Min((int)Math.Round(PanelWidth * scale), work.Right - work.Left - gap * 2);
+        var logicalWidth = width / scale - 2;
+        HeaderGrid.Measure(new Windows.Foundation.Size(logicalWidth, double.PositiveInfinity));
+        CardsPanel.Measure(new Windows.Foundation.Size(Math.Max(1, logicalWidth - 24), double.PositiveInfinity));
+        FooterBorder.Measure(new Windows.Foundation.Size(logicalWidth, double.PositiveInfinity));
+        var desired = HeaderGrid.DesiredSize.Height + CardsPanel.DesiredSize.Height + FooterBorder.DesiredSize.Height + 6;
+        var height = Math.Min((int)Math.Ceiling(Math.Clamp(desired, 180, 640) * scale), work.Bottom - work.Top - gap * 2);
+
+        var x = _anchor.Right - width;
+        var y = _anchor.Top - height - gap;
+        if (_anchor.Top >= work.Bottom) y = work.Bottom - height - gap; // bottom taskbar
+        else if (_anchor.Bottom <= work.Top) y = work.Top + gap; // top taskbar
+        else if (_anchor.Right <= work.Left) { x = work.Left + gap; y = _anchor.Bottom - height; }
+        else if (_anchor.Left >= work.Right) { x = work.Right - width - gap; y = _anchor.Bottom - height; }
+        x = Math.Clamp(x, work.Left + gap, work.Right - width - gap);
+        y = Math.Clamp(y, work.Top + gap, work.Bottom - height - gap);
+        if (AppWindow.Size.Width != width || AppWindow.Size.Height != height || AppWindow.Position.X != x || AppWindow.Position.Y != y)
+            AppWindow.MoveAndResize(new RectInt32(x, y, width, height));
     }
 
     private void ApplyTheme(string theme)
@@ -104,9 +178,12 @@ public sealed partial class MainWindow : Window
             "dark" => ElementTheme.Dark,
             _ => ElementTheme.Default,
         };
+        // Theme the outer surface as well as controls and their flyouts.
+        PanelBorder.RequestedTheme = RootGrid.RequestedTheme;
         SystemThemeItem.IsChecked = theme is not ("light" or "dark");
         LightThemeItem.IsChecked = theme == "light";
         DarkThemeItem.IsChecked = theme == "dark";
+        ApplyHeaderGlyphs();
     }
 
     private void OnThemeClick(object sender, RoutedEventArgs e)
@@ -122,60 +199,39 @@ public sealed partial class MainWindow : Window
         var on = AutoStartItem.IsChecked;
         try
         {
-            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(
-                @"Software\Microsoft\Windows\CurrentVersion\Run");
+            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
             if (on) key.SetValue("AnyBright", $"\"{Environment.ProcessPath}\" --minimized");
             else key.DeleteValue("AnyBright", false);
         }
-        catch { AutoStartItem.IsChecked = !on; }   // revert the toggle if the registry write failed
+        catch { AutoStartItem.IsChecked = !on; }
     }
 
-    private void UpdateCaptionColors()
-    {
-        // Keep the system caption buttons legible when the system theme changes.
-        AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
-        AppWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
-        AppWindow.TitleBar.ButtonForegroundColor = RootGrid.ActualTheme == ElementTheme.Dark
-            ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
-        AppWindow.TitleBar.ButtonInactiveForegroundColor = RootGrid.ActualTheme == ElementTheme.Dark
-            ? Microsoft.UI.Colors.Gray : Microsoft.UI.Colors.DimGray;
-        ApplyHeaderGlyphs();
-    }
-
-    /// <summary>
-    /// The two header buttons use pre-rendered glyph bitmaps instead of FontIcon -
-    /// font glyphs can end up half-rasterized when the window crosses monitors with
-    /// different scale factors, while bitmaps are DPI-transition immune.
-    /// </summary>
     private void ApplyHeaderGlyphs()
     {
         var suffix = RootGrid.ActualTheme == ElementTheme.Dark ? "light" : "dark";
-        try
-        {
-            GearImg.Source = new BitmapImage(new Uri("ms-appx:///assets/settings-" + suffix + ".png"));
-            HelpImg.Source = new BitmapImage(new Uri("ms-appx:///assets/help-" + suffix + ".png"));
-        }
-        catch { }
+        GearImg.Source = new BitmapImage(new Uri("ms-appx:///assets/settings-" + suffix + ".png"));
+        HelpImg.Source = new BitmapImage(new Uri("ms-appx:///assets/help-" + suffix + ".png"));
     }
 
     private async Task InitAsync()
     {
+        if (_detecting || CardsPanel.Children.OfType<DisplayCard>().Any(card => card.IsBusy)) return;
+        _detecting = true;
+        RefreshItem.IsEnabled = false;
+        foreach (var card in CardsPanel.Children.OfType<DisplayCard>().ToList()) CardsPanel.Children.Remove(card);
         LoadingPanel.Visibility = Visibility.Visible;
         LoadingRing.IsActive = true;
         EmptyPanel.Visibility = Visibility.Collapsed;
-        DisplayCountText.Text = "正在检测";
+        DisplayCountText.Text = "正在检测显示器…";
         try
         {
             var displays = await Task.Run(() => BrightnessService.EnumerateDisplays()
                 .Select(m => (Monitor: m, Gamma: BrightnessService.GetStartupGammaSlider(m.DeviceName))).ToList());
             if (_closed) return;
-            foreach (var (monitor, gamma) in displays)
-            {
-                var card = new DisplayCard(monitor, gamma, _modePrefs);
-                card.GammaLimitReached += (_, _) => UnlockInfoBar.IsOpen = true;
-                CardsPanel.Children.Add(card);
-            }
-            DisplayCountText.Text = $"已连接 {displays.Count} 台";
+            foreach (var (monitor, gamma) in displays) CardsPanel.Children.Add(new DisplayCard(monitor, gamma, _modePrefs));
+            DisplayCountText.Text = $"{displays.Count} 台显示器 · 随手调节亮度";
+            EmptyTitle.Text = "暂未发现显示器";
+            EmptyMessage.Text = "请确认显示器已连接，然后重新检测。";
             EmptyPanel.Visibility = displays.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         }
         catch
@@ -188,47 +244,19 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
-            LoadingRing.IsActive = false;
-            LoadingPanel.Visibility = Visibility.Collapsed;
+            _detecting = false;
+            if (!_closed)
+            {
+                RefreshItem.IsEnabled = true;
+                LoadingRing.IsActive = false;
+                LoadingPanel.Visibility = Visibility.Collapsed;
+                ScheduleResize();
+            }
         }
     }
 
     private async void OnRetryClick(object sender, RoutedEventArgs e) => await InitAsync();
-
-    private void OnUnlockClick(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                Arguments = "-NoProfile -Command \"New-Item -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ICM' -Force | Out-Null; " +
-                             "New-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ICM' -Name GdiIcmGammaRange -PropertyType DWord -Value 0 -Force | Out-Null; " +
-                             "Write-Host 'GdiIcmGammaRange = 0 已写入'\"",
-                Verb = "runas",
-                UseShellExecute = true,
-            };
-            System.Diagnostics.Process.Start(psi);
-        }
-        catch { /* The user may cancel the elevation prompt. */ }
-    }
-
-    private void HideToTray()
-    {
-        AppWindow.Hide();
-        TrayIconService.ShowBalloonOnce();
-    }
-
-    public void ShowFromTray()
-    {
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        if (Native.IsIconic(hwnd)) Native.ShowWindow(hwnd, 9);   // SW_RESTORE
-        AppWindow.Show();
-        Activate();
-        Native.SetForegroundWindow(hwnd);
-    }
-
-    public void BringToForeground() => ShowFromTray();
+    private void OnExitClick(object sender, RoutedEventArgs e) => ExitApp();
 
     private void ExitApp()
     {

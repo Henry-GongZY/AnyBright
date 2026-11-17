@@ -4,62 +4,77 @@ using System.Runtime.InteropServices;
 namespace ScreenBrightnessApp;
 
 /// <summary>
-/// Notification-area (tray) icon: closing the window parks the app here, left-click
-/// toggles the window, right-click opens a small menu. Zero dependencies - raw
+/// Notification-area icon: left-click toggles the brightness panel,
+/// right-click opens a small menu. Zero dependencies - raw
 /// Shell_NotifyIcon + a Win32 popup menu, callbacks routed through the window subclass.
 /// </summary>
 internal static class TrayIconService
 {
     private const uint CallbackMessage = 0x8000;   // WM_APP
-    private const uint WM_LBUTTONUP = 0x0202;
     private const int IdShow = 1;
     private const int IdExit = 2;
 
     private static IntPtr _hwnd;
     private static IntPtr _hIcon;
     private static bool _added;
-    private static bool _balloonShown;
     private static uint _taskbarCreatedMsg;
     private static Action? _showRequested;
+    private static Action? _toggleRequested;
     private static Action? _exitRequested;
-    private static string _iconPath = "";
 
-    public static void Initialize(Window window, Action showRequested, Action exitRequested)
+    public static void Initialize(Window window, Action toggleRequested, Action showRequested, Action exitRequested)
     {
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
         _showRequested = showRequested;
+        _toggleRequested = toggleRequested;
         _exitRequested = exitRequested;
         _taskbarCreatedMsg = Native.RegisterWindowMessageW("TaskbarCreated");
 
-        _ = System.Threading.Tasks.Task.Run(() =>
+        try
         {
-            try
-            {
-                _iconPath = AppIconService.EnsureAccentIcon();
-                var hIcon = Native.LoadImage(IntPtr.Zero, _iconPath, Native.IMAGE_ICON, 16, 16, Native.LR_LOADFROMFILE);
-                if (hIcon == IntPtr.Zero) return;
-                _hIcon = hIcon;
-                AddOrUpdate(Native.NIM_ADD);
-                _added = true;
-                // opt into the modern message protocol (WM_CONTEXTMENU / NIN_SELECT)
-                var v = NewData(Native.NIF_MESSAGE);
-                v.uVersion = Native.NOTIFYICON_VERSION_4;
-                Native.Shell_NotifyIconW(Native.NIM_SETVERSION, ref v);
-            }
-            catch { /* tray is best-effort; the app works without it */ }
-        });
+            string iconPath;
+            try { iconPath = AppIconService.EnsureAccentIcon(); }
+            catch { iconPath = Path.Combine(AppContext.BaseDirectory, "assets", "app.ico"); }
+            _hIcon = Native.LoadImage(IntPtr.Zero, iconPath, Native.IMAGE_ICON, 16, 16, Native.LR_LOADFROMFILE);
+            if (_hIcon == IntPtr.Zero) return;
+            _added = AddOrUpdate(Native.NIM_ADD);
+            if (_added) SetVersion();
+        }
+        catch { }
+    }
+
+    public static bool IsAvailable => _added;
+
+    public static bool TryGetIconRect(out Native.RECT rect)
+    {
+        var id = new Native.NOTIFYICONIDENTIFIER { cbSize = (uint)Marshal.SizeOf<Native.NOTIFYICONIDENTIFIER>(), hWnd = _hwnd, uID = 1 };
+        if (_added && Native.Shell_NotifyIconGetRect(ref id, out rect) == 0) return true;
+        return Fallback(out rect);
+    }
+
+    private static bool Fallback(out Native.RECT rect)
+    {
+        if (Native.GetCursorPos(out var pt)) { rect = new Native.RECT { Left = pt.X, Right = pt.X, Top = pt.Y, Bottom = pt.Y }; return true; }
+        rect = default;
+        return false;
+    }
+
+    private static void SetVersion()
+    {
+        var data = NewData(Native.NIF_MESSAGE);
+        data.uVersion = Native.NOTIFYICON_VERSION_4;
+        Native.Shell_NotifyIconW(Native.NIM_SETVERSION, ref data);
     }
 
     public static void UpdateIcon(string iconPath)
     {
-        if (!_added || iconPath == _iconPath) return;
+        if (!_added) return;
         try
         {
             var hIcon = Native.LoadImage(IntPtr.Zero, iconPath, Native.IMAGE_ICON, 16, 16, Native.LR_LOADFROMFILE);
             if (hIcon == IntPtr.Zero) return;
             var old = _hIcon;
             _hIcon = hIcon;
-            _iconPath = iconPath;
             AddOrUpdate(Native.NIM_MODIFY);
             if (old != IntPtr.Zero) Native.DestroyIcon(old);
         }
@@ -84,19 +99,18 @@ internal static class TrayIconService
     {
         if (message == _taskbarCreatedMsg && _taskbarCreatedMsg != 0)
         {
-            if (_added) AddOrUpdate(Native.NIM_ADD);   // Explorer restarted: re-register the icon
+            if (_added && AddOrUpdate(Native.NIM_ADD)) SetVersion();
             return false;
         }
         if (message != CallbackMessage || !_added) return false;
 
-        // Event type arrives in lParam's low word (with a 0x10000 "from tray" flag):
-        // 0x201/0x202 = left button down/up, 0x400 = NIN_SELECT, 0x7B = WM_CONTEXTMENU
+        // Version 4 packs the event in the low word and the icon ID in the high word.
         var evt = (uint)(lParam.ToInt64() & 0xFFFF);
         switch (evt)
         {
-            case WM_LBUTTONUP:          // left click
             case Native.NIN_SELECT:     // keyboard / programmatic selection
-                _showRequested?.Invoke();
+            case Native.NIN_KEYSELECT:
+                _toggleRequested?.Invoke();
                 return true;
             case Native.WM_CONTEXTMENU: // right click
                 ShowContextMenu(0, 0, true);
@@ -120,22 +134,10 @@ internal static class TrayIconService
         };
     }
 
-    private static void AddOrUpdate(uint message)
+    private static bool AddOrUpdate(uint message)
     {
-        var nid = NewData(Native.NIF_MESSAGE | Native.NIF_ICON | Native.NIF_TIP);
-        Native.Shell_NotifyIconW(message, ref nid);
-    }
-
-    /// <summary>One-time toast after the first close-to-tray so users know the app is still running.</summary>
-    public static void ShowBalloonOnce()
-    {
-        if (_balloonShown || !_added) return;
-        _balloonShown = true;
-        var nid = NewData(Native.NIF_INFO);
-        nid.szInfoTitle = "AnyBright";
-        nid.szInfo = "已驻留系统托盘：左键图标可随时调节亮度，右键可退出。";
-        nid.dwInfoFlags = Native.NIIF_INFO;
-        Native.Shell_NotifyIconW(Native.NIM_MODIFY, ref nid);
+        var nid = NewData(Native.NIF_MESSAGE | Native.NIF_ICON | Native.NIF_TIP | 0x80); // NIF_SHOWTIP (v4)
+        return Native.Shell_NotifyIconW(message, ref nid);
     }
 
     private static void ShowContextMenu(int x, int y, bool useCursorCoords)
@@ -148,7 +150,7 @@ internal static class TrayIconService
         }
         var menu = Native.CreatePopupMenu();
         if (menu == IntPtr.Zero) return;
-        Native.AppendMenuW(menu, Native.MF_STRING, (IntPtr)IdShow, "显示主窗口");
+        Native.AppendMenuW(menu, Native.MF_STRING, (IntPtr)IdShow, "显示亮度面板");
         Native.AppendMenuW(menu, Native.MF_SEPARATOR, IntPtr.Zero, null);
         Native.AppendMenuW(menu, Native.MF_STRING, (IntPtr)IdExit, "退出");
         var cmd = Native.TrackPopupMenu(menu, Native.TPM_RETURNCMD | Native.TPM_RIGHTBUTTON, x, y, 0, _hwnd, IntPtr.Zero);

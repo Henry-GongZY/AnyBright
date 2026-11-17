@@ -26,13 +26,14 @@ Windows 的亮度滑块只为笔记本内屏服务；外接显示器即使支持
 
 ## 特性
 
-- WinUI 3 + Mica，跟随系统深浅色（右上角「外观」可强制浅色/深色）；原生标题栏、显示器卡片、高 DPI 与窄窗口自适应
+- Windows 11 风格的托盘弹出面板：点击托盘图标即可调节，不占任务栏；点击其他位置或按 Esc 收起，右键图标可重新打开或退出
+- WinUI 3，跟随系统深浅色（设置菜单可强制浅色/深色）；无标题栏小面板会贴近托盘显示，并随屏幕 DPI 与选项展开自动调整尺寸
 - 每台显示器一张卡片，滑块即时生效（220ms 防抖 + 请求合并 + DDC 总线串行化，频繁拖动不丢指令、不撞车）
 - Gamma 调光基线持久化（`%LOCALAPPDATA%\ScreenBrightness\`）：重启应用不叠加变暗，与 f.lux / 系统夜间模式兼容
 - Gamma 滑块 0-100 直接映射到系统允许的 50%-100% 亮度范围（0 = 原先的 50%，拖到哪都不会被系统拒绝）；需要更深的压暗时用 CLI 的 `set` + `unlock`
-- 显示器检测有加载态，失败或未连接时可一键重新检测
-- 关闭窗口即驻留系统托盘：左键图标开关主窗口，右键菜单可退出；托盘图标用系统强调色动态绘制，Explorer 重启后自动重挂；单实例保护（重复启动自动唤起已有窗口）
-- 右上角齿轮「设置」菜单：外观主题（跟随系统/浅色/深色）+ 开机自启动开关（默认关闭；开启后开机静默驻留托盘，不弹窗口）
+- 显示器检测有加载态，失败或未连接时可一键重新检测；调光方式与恢复初始亮度收纳在每台显示器的展开选项中
+- 托盘图标用系统强调色动态绘制，Explorer 重启后自动重挂；单实例保护（重复启动自动唤起已有面板）
+- 设置菜单：外观主题（跟随系统/浅色/深色）+ 开机自启动开关（默认关闭；开启后开机静默驻留托盘，不弹面板）
 - 附带 PowerShell CLI，方便脚本与远程场景
 
 ## 安装
@@ -101,13 +102,14 @@ Windows' brightness slider only serves laptop internal panels. External monitors
 
 ### Features
 
-- WinUI 3 + Mica, follows system light/dark theme (「Appearance」in the top-right can force light/dark); native title bar, per-monitor cards, high-DPI and narrow-window adaptive layout
+- Windows 11 style tray popup: click the tray icon to adjust brightness without a taskbar button; click elsewhere or press Esc to dismiss, and right-click the icon to reopen or quit
+- WinUI 3, follows system light/dark theme (the settings menu can force light/dark); the compact titleless panel anchors near the tray and resizes with display DPI and expanded options
 - One card per display; sliders apply instantly (220 ms debounce + request coalescing + serialized DDC bus — no dropped commands or collisions while dragging)
 - Gamma dimming baseline persisted (`%LOCALAPPDATA%\ScreenBrightness\`): no compounding across restarts; compatible with f.lux / Night light
 - The gamma slider's 0-100 maps onto the system-allowed 50%-100% brightness range (0 = the old 50%); for deeper dimming use the CLI `set` + `unlock`
-- Display detection has a loading state with one-click re-scan on failure
-- Closing the window parks the app in the system tray: left-click the icon to toggle the window, right-click to quit; the tray icon is drawn at runtime from the system accent color and re-registered after Explorer restarts; single-instance (relaunching activates the existing window)
-- Gear「Settings」menu top-right: appearance theme (system/light/dark) + a launch-at-Windows-startup toggle (default off; enabled, it starts silently in the tray without showing the window)
+- Display detection has a loading state with one-click re-scan on failure; dimming mode and reset are tucked into each display's expanded options
+- The tray icon is drawn at runtime from the system accent color and re-registered after Explorer restarts; single-instance (relaunching opens the existing panel)
+- Settings menu: appearance theme (system/light/dark) + a launch-at-Windows-startup toggle (default off; enabled, it starts silently in the tray without showing the panel)
 - Ships with a PowerShell CLI for scripting and remote scenarios
 
 ### Install

@@ -16,7 +16,7 @@ public sealed partial class DisplayCard : UserControl
     private string _pendingKind = "";
     private int _pendingPercent;
     private string _pendingMode = "gamma";
-    public event EventHandler? GammaLimitReached;
+    public bool IsBusy => _busy || _timer.IsRunning;
 
     private bool IsDdc => ModeCombo.SelectedIndex == 0;
 
@@ -25,15 +25,6 @@ public sealed partial class DisplayCard : UserControl
         InitializeComponent();
         _monitor = monitor;
         _modePrefs = modePrefs;
-        SizeChanged += (_, e) =>
-        {
-            var compact = e.NewSize.Width < 560;
-            CardBody.Padding = compact ? new Thickness(20, 20, 20, 12) : new Thickness(24, 22, 24, 12);
-            CardFooter.Padding = compact ? new Thickness(20, 12, 20, 16) : new Thickness(24, 14, 24, 18);
-            PrimaryBadge.Visibility = !compact && monitor.Primary ? Visibility.Visible : Visibility.Collapsed;
-            ModeCombo.Width = compact ? 164 : 204;
-            ResetLabel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        };
         var mode = modePrefs.TryGetValue(monitor.DeviceName, out var saved)
             ? saved : (monitor.DdcSupported ? "ddc" : "gamma");
         if (!monitor.DdcSupported) mode = "gamma";
@@ -43,14 +34,13 @@ public sealed partial class DisplayCard : UserControl
         DisplayNameText.Text = monitor.FriendlyName;
         ToolTipService.SetToolTip(DisplayNameText, monitor.FriendlyName);
         DisplayMetaText.Text = $"显示器 {number} · {monitor.Width} × {monitor.Height}{(monitor.Primary ? " · 主屏幕" : "")}";
-        PrimaryBadge.Visibility = monitor.Primary ? Visibility.Visible : Visibility.Collapsed;
         DdcOption.IsEnabled = monitor.DdcSupported;
         if (!monitor.DdcSupported)
             ToolTipService.SetToolTip(ModeCombo, "未检测到 DDC/CI。请检查显示器菜单，或尝试直接连接显示器。");
         ModeCombo.SelectedIndex = mode == "ddc" ? 0 : 1;
         UpdateModeDescription();
         SetDisplayedValue(IsDdc ? BrightnessService.ToPercent(monitor.DdcCurrent, monitor.DdcMax) : gammaPercent);
-        ShowStatus(monitor.DdcSupported ? "已就绪，拖动滑块即可调节" : "使用软件调光 · 未检测到硬件背光控制");
+
         AutomationProperties.SetName(BrightnessSlider, $"{monitor.FriendlyName} 亮度");
 
         _timer = DispatcherQueue.CreateTimer();
@@ -81,11 +71,18 @@ public sealed partial class DisplayCard : UserControl
             _ = PumpAsync();
         };
         Unloaded += (_, _) => { _unloaded = true; _timer.Stop(); _pendingKind = ""; };
+        Loaded += (_, _) => _unloaded = false;
+    }
+
+    private void OnDetailsClick(object sender, RoutedEventArgs e)
+    {
+        DetailsPanel.Visibility = DetailsButton.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        DetailsChevron.Glyph = DetailsButton.IsChecked == true ? "\uE70E" : "\uE70D";
     }
 
     private void UpdateModeDescription()
     {
-        ModeDescriptionText.Text = IsDdc ? "调节显示器背光" : "调节输出画面亮度";
+        ModeDescriptionText.Text = IsDdc ? "直接调节显示器背光" : "软件调光 · 0–100 对应 50%–100% 输出亮度";
         _syncing = true;
         try { BrightnessSlider.Minimum = 0; }   // 0 is safe in both modes (gamma maps to the allowed range)
         finally { _syncing = false; }
@@ -107,6 +104,7 @@ public sealed partial class DisplayCard : UserControl
     {
         StatusText.Text = text;
         StatusIcon.Glyph = glyph;
+        StatusRow.Visibility = Visibility.Visible;
     }
 
     private void SetControlsBusy(bool busy)

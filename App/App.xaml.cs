@@ -29,15 +29,13 @@ public partial class App : Application
 
         var startMinimized = Environment.GetCommandLineArgs().Any(
             a => a is "--minimized" or "/minimized");
-        MainWindow.LaunchHidden = startMinimized;
-
         _window = new MainWindow();
-        if (startMinimized) _window.AppWindow.Hide();   // silent start: tray only, no UI
-        else _window.Activate();
+        if (startMinimized && TrayIconService.IsAvailable) _window.AppWindow.Hide();
+        else MainWindow.Instance!.ShowFromTray();
 
         var activate = new EventWaitHandle(false, EventResetMode.AutoReset, ActivateEventName);
         ThreadPool.RegisterWaitForSingleObject(activate,
-            (_, _) => _window?.DispatcherQueue.TryEnqueue(() => MainWindow.Current?.BringToForeground()),
+            (_, _) => _window?.DispatcherQueue.TryEnqueue(() => MainWindow.Instance?.ShowFromTray()),
             null, -1, false);
     }
 }

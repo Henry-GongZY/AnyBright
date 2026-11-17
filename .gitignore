@@ -22,3 +22,10 @@ Desktop.ini
 publish-trim/
 staging/
 publish-arm64/
+publish-lite/
+publish-min/
+publish-runtime-min/
+publish-x86/
+publish-*-stage.zip
+publish-baseline.zip
+publish-lean.zip

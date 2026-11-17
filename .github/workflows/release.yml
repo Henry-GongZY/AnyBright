@@ -38,6 +38,19 @@ jobs:
       - name: Publish (self-contained, IL-trimmed, win-arm64)
         run: dotnet publish App -c Release -p:Platform=ARM64 -r win-arm64 --self-contained true -p:PublishTrimmed=true -p:Version=${{ steps.ver.outputs.version }} -o publish/out-arm64
 
+      - name: Trim unused runtime files
+        shell: pwsh
+        run: |
+          foreach ($arch in @('x64', 'arm64')) {
+            $root = "publish/out-$arch"
+            Get-ChildItem $root -Directory | Where-Object {
+              $_.Name -match '^[a-z]{2,3}-' -and $_.Name -notin @('zh-CN', 'en-us')
+            } | Remove-Item -Recurse -Force
+            Get-ChildItem $root -File | Where-Object {
+              $_.Name -match '^(Microsoft\.DiaSymReader\.Native.*\.dll|mscordaccore.*\.dll|mscordbi\.dll|createdump\.exe)$'
+            } | Remove-Item -Force
+          }
+
       - name: Stage portable packages (app + CLI scripts)
         shell: pwsh
         run: |

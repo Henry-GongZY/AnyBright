@@ -11,12 +11,6 @@ internal static class Native
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT { public int X; public int Y; }
 
-    [StructLayout(LayoutKind.Sequential)]
-    public struct MINMAXINFO
-    {
-        public POINT Reserved, MaxSize, MaxPosition, MinTrackSize, MaxTrackSize;
-    }
-
     public delegate IntPtr SubclassProc(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr data);
 
     [DllImport("comctl32.dll")]
@@ -31,6 +25,28 @@ internal static class Native
     public static extern bool RemoveWindowSubclass(IntPtr hwnd, SubclassProc callback, UIntPtr id);
 
     public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NOTIFYICONIDENTIFIER { public uint cbSize; public IntPtr hWnd; public uint uID; public Guid guidItem; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MONITORINFO { public uint cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }
+
+    [DllImport("shell32.dll")]
+    public static extern int Shell_NotifyIconGetRect(ref NOTIFYICONIDENTIFIER identifier, out RECT iconLocation);
+    [DllImport("user32.dll")]
+    public static extern IntPtr MonitorFromPoint(POINT point, uint flags);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetMonitorInfoW(IntPtr monitor, ref MONITORINFO info);
+    [DllImport("shcore.dll")]
+    public static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmSetWindowAttribute(IntPtr hwnd, uint attribute, ref int value, int size);
 
     [StructLayout(LayoutKind.Sequential)]
     public struct Ramp
@@ -96,11 +112,10 @@ internal static class Native
 
     public const uint NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2, NIM_SETVERSION = 4;
     public const uint NOTIFYICON_VERSION_4 = 0x4;
-    public const uint NIF_MESSAGE = 0x1, NIF_ICON = 0x2, NIF_TIP = 0x4, NIF_INFO = 0x10;
-    public const uint NIIF_INFO = 0x1;
+    public const uint NIF_MESSAGE = 0x1, NIF_ICON = 0x2, NIF_TIP = 0x4;
     public const uint MF_STRING = 0x0, MF_SEPARATOR = 0x800;
     public const uint TPM_RETURNCMD = 0x100, TPM_RIGHTBUTTON = 0x2;
-    public const uint WM_CONTEXTMENU = 0x007B, WM_LBUTTONDBLCLK = 0x0203;
+    public const uint WM_CONTEXTMENU = 0x007B;
     public const uint NIN_SELECT = 0x0400, NIN_KEYSELECT = 0x0401;
     public const uint IMAGE_ICON = 1;
     public const uint LR_LOADFROMFILE = 0x10;
@@ -122,6 +137,7 @@ internal static class Native
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string szInfoTitle;
         public uint dwInfoFlags;
         public Guid guidItem;
+        public IntPtr hBalloonIcon;
     }
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
@@ -137,17 +153,6 @@ internal static class Native
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool DestroyIcon(IntPtr hIcon);
-
-    [DllImport("user32.dll")]
-    public static extern int GetSystemMetrics(int index);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool ShowWindow(IntPtr hWnd, int cmd);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool IsIconic(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
